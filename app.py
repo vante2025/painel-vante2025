@@ -1,6 +1,8 @@
 
 import streamlit as st
 import pandas as pd
+import folium
+from streamlit_folium import st_folium
 
 # ---------- Configuração Inicial ----------
 st.set_page_config(layout="wide")
@@ -32,16 +34,15 @@ def pagina_tabela():
 
     df_filtrado = df[df["Projeto"].isin(projetos)]
 
-    # Selecionar apenas um candidato vigente por site
+    # ---------- Selecionar apenas um candidato vigente por site ----------
     df_filtrado = df_filtrado.sort_values(by=["ID Winity", "Rev."], ascending=[True, False])
-    resultado = []
-    for _, grupo in df_filtrado.groupby("ID Winity"):
-        candidatos_ativos = grupo[grupo["STATUS"].str.lower().isin(["em qualificação", "qualificado"])]
-        if not candidatos_ativos.empty:
-            resultado.append(candidatos_ativos.iloc[0])
-        else:
-            resultado.append(grupo.iloc[0])
-    df_filtrado = pd.DataFrame(resultado)
+    df_filtrado = df_filtrado.groupby("ID Winity").apply(
+        lambda x: x[x["STATUS"].str.lower().isin(["em qualificação", "qualificado"])]
+        if any(x["STATUS"].str.lower().isin(["em qualificação", "qualificado"]))
+        else x
+    ).reset_index(drop=True)
+    df_filtrado = df_filtrado.sort_values(by=["ID Winity", "Rev."], ascending=[True, False])
+    df_filtrado = df_filtrado.drop_duplicates(subset=["ID Winity"], keep="first")
 
     etapas = {
         "TOTAL DE SITES": "# 📍",
