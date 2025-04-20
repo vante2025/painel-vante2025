@@ -1,6 +1,7 @@
 
 import streamlit as st
 import pandas as pd
+import os
 import folium
 from streamlit_folium import st_folium
 
@@ -11,9 +12,13 @@ if "pagina" not in st.session_state:
 
 @st.cache_data
 def carregar_dados():
-    df = pd.read_excel("Status Sites.xlsx", sheet_name="Planilha1")
-    df = df.fillna("")
-    return df
+    arquivos = os.listdir(".")
+    planilha = next((f for f in arquivos if f.lower().endswith(".xlsx") and "status" in f.lower()), None)
+    if not planilha:
+        st.error("Arquivo da planilha não encontrado no diretório. Verifique se o arquivo .xlsx está corretamente nomeado.")
+        st.stop()
+    df = pd.read_excel(planilha, sheet_name="Planilha1")
+    return df.fillna("")
 
 def indicadores(df):
     etapas = {
