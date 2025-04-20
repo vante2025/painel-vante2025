@@ -54,7 +54,7 @@ def indicadores(df):
         cards.append(indicador_card(nome_visivel, valor, icone))
 
     total = df["ID Winity"].nunique()
-    cards.insert(2, indicador_card("TOTAL DE SITES", total, "🗼", cor="#198754"))
+    cards.insert(0, indicador_card("TOTAL DE SITES", total, "🗼", cor="#198754"))
 
     linha = cards
     for linha in [linha]:
@@ -69,13 +69,21 @@ def pagina_tabela():
 
     df_proj = df[df["Projeto"].isin(projetos_sel)]
 
-    # Normalizar status
     df_proj["Status"] = df_proj["Status"].astype(str).str.lower()
+    df_proj = df_proj.sort_values(["ID Winity", "Candidato", "Rev."], ascending=[True, True, False])
 
-    # Priorizar candidatos não reprovados
-    df_proj = df_proj.sort_values(["ID Winity", "Rev."], ascending=[True, False])
-    df_proj = df_proj[~df_proj["Status"].str.contains("reprovado|obsoleto|invalidado") | ~df_proj.duplicated("ID Winity")]
-    df_proj = df_proj.drop_duplicates(subset="ID Winity", keep="first")
+    # Separar qualificados/em qualificação
+    qualificados = df_proj[df_proj["Status"].str.contains("qualificado|em qualificação")]
+    reprovados = df_proj[~df_proj["ID Winity"].isin(qualificados["ID Winity"])]
+
+    # Para IDs com qualificado, manter só 1 (primeiro)
+    df_ok = qualificados.drop_duplicates("ID Winity", keep="first")
+
+    # Para IDs sem qualificado, pega o de maior revisão
+    df_fallback = reprovados.sort_values("Rev.", ascending=False).drop_duplicates("ID Winity", keep="first")
+
+    # Junta os dois
+    df_proj = pd.concat([df_ok, df_fallback], ignore_index=True)
     
 
     if not df_proj.empty:
