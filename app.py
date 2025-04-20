@@ -3,9 +3,13 @@ import pandas as pd
 import folium
 from streamlit_folium import st_folium
 
-# Carregar dados reais da planilha
-@st.cache_data
+# ---------- Configuração Inicial ----------
+st.set_page_config(layout="wide")
 
+if "pagina" not in st.session_state:
+    st.session_state.pagina = "tabela"
+
+@st.cache_data
 def carregar_dados():
     file_path = "EcoRiominas - Status Sites.xlsx"
     df = pd.read_excel(file_path, sheet_name="Controle")
@@ -14,46 +18,118 @@ def carregar_dados():
     df = df.fillna("")
     return df
 
-# Inicializar app
-st.set_page_config(layout="wide")
-st.title("Painel Vante - Controle de Sites")
+# ---------- Função para exibir logo do projeto ----------
+def exibir_logo_projeto(nome_projeto):
+    caminho_logo = f"logo_{nome_projeto.lower().replace(' ', '_')}.png"
+    try:
+        st.image(caminho_logo, width=120)
+    except:
+        st.warning(f"Logo não encontrado para o projeto: {nome_projeto}")
 
-df = carregar_dados()
-site_ids = df["ID Winity"].unique()
-site_selecionado = st.selectbox("Selecione um site:", site_ids)
+# ---------- Página 1: Tabela por Projeto ----------
+def pagina_tabela():
+    st.image("logo_vante.png", width=160)
+    st.title("Selecione um projeto")
 
-site_data = df[df["ID Winity"] == site_selecionado]
+    df = carregar_dados()
 
-col1, col2 = st.columns([2, 2])
+    if "Projeto" not in df.columns:
+        st.error("A coluna 'Projeto' não está presente na planilha.")
+        return
 
-with col1:
-    st.subheader(f"Detalhamento - {site_selecionado}")
-    candidatos = site_data["Candidato"].unique()
-    for cand in sorted(candidatos):
-        candidato_data = site_data[site_data["Candidato"] == cand].iloc[0]
-        st.markdown(f"### Candidato [{cand}] - Revisão 0")  # Regra: novo candidato inicia em 0
-        st.markdown(f"**Operadora:** {candidato_data['ID Operadora']}")
-        st.markdown(f"**Status:** {candidato_data['STATUS']}")
-        st.markdown(f"**Observações:** {candidato_data['Obs'] if candidato_data['Obs'] else '-'}")
+    projeto = st.selectbox("PROJETO:", df["Projeto"].unique())
+    exibir_logo_projeto(projeto)
 
-        arquivos = ["SAR.pdf", "Projeto_Estrutura.pdf"] if candidato_data['STATUS'] else []
-        if arquivos:
-            st.markdown("**Arquivos disponíveis:**")
-            for file in arquivos:
-                st.download_button(label=file, data="Arquivo Simulado", file_name=file)
-        st.markdown("---")
+    # Filtrar apenas candidatos vigentes
+    candidatos_validos = df[
+        (df["Projeto"] == projeto) &
+        (~df["STATUS"].str.lower().str.contains("obsoleto|reprovado|invalidado"))
+    ]
 
-with col2:
-    st.subheader("Localização dos Candidatos")
-    primeiro = site_data.iloc[0]
-    lat = primeiro.get("Latitude Candidato", -23.0)
-    lon = primeiro.get("Longitude Candidato", -46.0)
-    m = folium.Map(location=[lat, lon], zoom_start=14)
-    for _, row in site_data.iterrows():
-        if row["Latitude Candidato"] and row["Longitude Candidato"]:
-            folium.Marker([row["Latitude Candidato"], row["Longitude Candidato"]],
-                          popup=f"Candidato {row['Candidato']}\nStatus: {row['STATUS']}").add_to(m)
-    st_folium(m, width=700, height=500)
+    colunas = ["ID Winity", "ID Operadora", "Candidato", "STATUS", "Latitude Candidato", "Longitude Candidato",
+               "Município", "UF", "Rodovia", "KM", "Sentido"]
 
-st.markdown("---")
-st.caption("Protótipo inicial com base real - Painel Vante | Desenvolvido com Streamlit")
+    tabela = candidatos_validos[colunas]
+    st.dataframe(tabela, use_container_width=True, hide_index=True)
+
+    site_escolhido = st.selectbox("Selecione um site para detalhes:", tabela["ID Winity"].unique())
+    if st.button("Ver detalhes do site"):
+        st.session_state.site = site_escolhido
+        st.session_state.projeto = projeto
+        st.session_state.pagina = "detalhe"
+        st.rerun()
+
+# ---------- Página 2: Detalhamento ----------
+def pagina_detalhe():
+    df = carregar_dados()
+    projeto = st.session_state.get("projeto", "")
+    site = st.session_state.get("site", "")
+    df_site = df[(df["Projeto"] == projeto) & (df["ID Winity"] == site)]
+
+    st.image("logo_vante.png", width=160)
+    exibir_logo_projeto(projeto)
+
+    st.subheader(f"Projeto: {projeto} | Site: {site}")
+    if st.button("🔙 VER TODOS OS SITES DO PROJETO"):
+        st.session_state.pagina = "tabela"
+        st.rerun()
+
+    candidatos = df_site["Candidato"].unique()
+    candidato_sel = st.selectbox("Candidato:", candidatos)
+    rev = "0"
+
+    dados = df_site[df_site["Candidato"] == candidato_sel].iloc[0]
+
+    col1, col2 = st.columns([2, 2])
+
+    with col1:
+        st.markdown("### Dados do Site")
+        campos = {
+            "ID OPERADORA": dados["ID Operadora"],
+            "MUNICÍPIO": dados["Município"],
+            "UF": dados["UF"],
+            "RODOVIA": dados["Rodovia"],
+            "KM": dados["KM"],
+            "SENTIDO": dados["Sentido"],
+            "LAT": dados["Latitude Candidato"],
+            "LONG": dados["Longitude Candidato"],
+            "DISTÂNCIA PN": dados["Dist PN"],
+            "LAT PN": dados["Latitude PN"],
+            "LONG PN": dados["Longitude PN"],
+            "ALTURA": dados["Altura da Torre Final (m)"],
+            "RESTRIÇÃO COMAR": dados["COMAR"],
+            "ENERGIA": dados["Energia"],
+            "RELEVO": dados["Relevo"],
+            "ACIONAMENTO": dados["Acionamento Fornecedor"],
+            "VOO": dados["Data Voo"],
+            "SAR": dados["SAR"],
+            "QUALIFICADO": dados["Validação Aquisição"],
+            "QUALIFICADO OPERADORA": dados["SAR QUALIFICADO OPERADORA"],
+            "QUALIFICADO CONCESSIONÁRIA": dados["Analise Concessionária"]
+        }
+        for k, v in campos.items():
+            st.markdown(f"**{k}:** {v if v else '-'}")
+
+        st.markdown("### Documentos para Download")
+        for nome in ["SAR", "KMZ", "PLANIALTIMETRICO", "PUBLICAÇÃO DIÁRIO", "CPEU"]:
+            st.download_button(label=nome, data="Arquivo Simulado", file_name=f"{nome}_{site}.pdf")
+
+    with col2:
+        st.markdown("### Localização")
+        m = folium.Map(location=[dados["Latitude Candidato"], dados["Longitude Candidato"]], zoom_start=15)
+        folium.Marker(
+            [dados["Latitude Candidato"], dados["Longitude Candidato"]],
+            popup=f"Candidato {candidato_sel}",
+            icon=folium.Icon(color='blue', icon='info-sign')
+        ).add_to(m)
+        folium.Marker(
+            [dados["Latitude PN"], dados["Longitude PN"]],
+            popup="Ponto Nominal (PN)",
+            icon=folium.Icon(color='green', icon='flag')
+        ).add_to(m)
+        st_folium(m, width=700, height=500)
+
+if st.session_state.pagina == "tabela":
+    pagina_tabela()
+else:
+    pagina_detalhe()
