@@ -4,122 +4,117 @@ import pandas as pd
 import folium
 from streamlit_folium import st_folium
 
+# ---------- Configuração Inicial ----------
 st.set_page_config(layout="wide")
 
 if "pagina" not in st.session_state:
     st.session_state.pagina = "tabela"
-if "site" not in st.session_state:
     st.session_state.site = ""
-if "projeto" not in st.session_state:
-    st.session_state.projeto = ""
-if "filtro_status" not in st.session_state:
+    st.session_state.projeto = []
     st.session_state.filtro_status = None
 
 @st.cache_data
 def carregar_dados():
-    df = pd.read_excel("Status Sites.xlsx", sheet_name="Controle")
+    df = pd.read_excel("Status Sites.xlsx", sheet_name="Planilha1")
     df = df.dropna(subset=["ID Winity", "Candidato"])
     df = df[df["Candidato"].isin(["A", "B", "C", "D"])]
     df = df.fillna("")
     return df
 
-def exibir_logo_projeto(nome_projeto):
-    caminho_logo = f"logo_{nome_projeto.lower().replace(' ', '_')}.png"
-    try:
-        st.image(caminho_logo, width=120)
-    except:
-        pass
-
-def indicadores(df_proj):
-    etapas = {
-        "VOADO": "VOO",
-        "PROCESSAMENTO VOO": "Processamento Voo",
-        "SAR": "SAR",
-        "QUALIFICADO": "Validação Aquisição",
-        "QUALIFICADO OPERADORA": "SAR QUALIFICADO OPERADORA",
-        "QUALIFICADO CONCESSIONÁRIA": "Analise Concessionária",
-        "KIT ELABORADO": "KIT ELABORADO",
-        "KIT APROVADO": "KIT APROVADO",
-        "EM ANÁLISE AGÊNCIA": "EM ANÁLISE AGÊNCIA",
-        "PUBLICAÇÃO DO": "PUBLICAÇÃO DIÁRIO",
-        "EMISSÃO CPEU": "CPEU"
-    }
-
-    colunas = st.columns(len(etapas) + 1)
-    colunas[0].markdown("### 🗼 TOTAL DE SITES")
-    colunas[0].markdown(f"<h2 style='color:green'>{df_proj['ID Winity'].nunique()}</h2>", unsafe_allow_html=True)
-
-    for i, (etapa, coluna) in enumerate(etapas.items()):
-        if coluna not in df_proj.columns:
-            valor = "N/A"
-        else:
-            valor = df_proj[coluna].astype(str).str.len().gt(0).sum()
-        if st.button(etapa, key=f"filtro_{etapa}"):
-            st.session_state.filtro_status = etapa if st.session_state.filtro_status != etapa else None
-        colunas[i+1].markdown(f"<h3 style='color:#1E90FF'>{valor}</h3>", unsafe_allow_html=True)
-
+# ---------- Página 1: Painel de Projetos ----------
 def pagina_tabela():
+    st.image("logo_vante.png", width=160)
     df = carregar_dados()
 
-    st.image("logo_vante.png", width=140)
-    projetos = st.multiselect("Selecione o Projeto:", sorted(df["Projeto"].dropna().unique()))
+    projetos = st.multiselect("Selecione o Projeto:", df["Projeto"].unique(), default=st.session_state.projeto)
+    st.session_state.projeto = projetos
+
     if not projetos:
         return
 
-    df_proj = df[df["Projeto"].isin(projetos)]
+    df_filtrado = df[df["Projeto"].isin(projetos)]
 
-    indicadores(df_proj)
+    # ---------- Selecionar apenas um candidato vigente por site ----------
+    df_filtrado = df_filtrado.sort_values(by=["ID Winity", "Revisão"], ascending=[True, False])
+    df_filtrado = df_filtrado.groupby("ID Winity").apply(lambda x: x[x["STATUS"].str.lower().isin(["em qualificação", "qualificado"])]
+                                                           if any(x["STATUS"].str.lower().isin(["em qualificação", "qualificado"]))
+                                                           else x).reset_index(drop=True)
+    df_filtrado = df_filtrado.sort_values(by=["ID Winity", "Revisão"], ascending=[True, False])
+    df_filtrado = df_filtrado.drop_duplicates(subset=["ID Winity"], keep="first")
 
-    df_vigente = df_proj.copy()
-    df_vigente["Rev_int"] = pd.to_numeric(df_vigente["Revisão"], errors="coerce").fillna(0).astype(int)
-    df_vigente.sort_values(by=["ID Winity", "Candidato", "Rev_int"], ascending=[True, True, False], inplace=True)
-    df_vigente["Status_lower"] = df_vigente["STATUS"].str.lower()
+    etapas = {
+        "TOTAL DE SITES": "# 📍",
+        "VOADO": "🛩️",
+        "PROCESSAMENTO VOO": "📰",
+        "SAR": "📄",
+        "QUALIFICADO": "✅",
+        "QUALIFICADO OPERADORA": "📊",
+        "QUALIFICADO CONCESSIONÁRIA": "🏛️",
+        "KIT ELABORADO": "🥇",
+        "KIT APROVADO": "✔️",
+        "EM ANÁLISE AGÊNCIA": "🔍",
+        "PUBLICAÇÃO DO": "📰"
+    }
 
-    df_filtrado = (
-        df_vigente[df_vigente["Status_lower"].isin(["qualificado", "em qualificação"])]
-        .drop_duplicates(subset="ID Winity", keep="first")
-    )
+    def indicadores(df):
+        total = len(df)
+        cards = []
+        for etapa, icone in etapas.items():
+            if etapa == "TOTAL DE SITES":
+                cards.append((etapa, icone, total))
+            elif etapa == "VOADO":
+                cards.append((etapa, icone, df["VOO"].astype(str).str.strip().ne("").sum()))
+            elif etapa == "PROCESSAMENTO VOO":
+                cards.append((etapa, icone, df["Processamento Voo"].astype(str).str.strip().ne("").sum()))
+            else:
+                cards.append((etapa, icone, df["STATUS"].str.upper().str.contains(etapa.upper()).sum()))
+        return cards
 
-    # Se não houver nenhum qualificado/em qualificação, pega o de maior revisão
-    restante = df_vigente[~df_vigente["ID Winity"].isin(df_filtrado["ID Winity"])]
-    df_restante = restante.drop_duplicates(subset="ID Winity", keep="first")
-
-    df_final = pd.concat([df_filtrado, df_restante]).drop_duplicates(subset="ID Winity", keep="first")
+    colunas = st.columns(len(etapas))
+    for i, (etapa, icone, valor) in enumerate(indicadores(df_filtrado)):
+        if etapa == "TOTAL DE SITES":
+            colunas[i].metric(f"{icone} {etapa}", valor)
+        else:
+            if colunas[i].button(f"{icone} {etapa}
+{valor}"):
+                st.session_state.filtro_status = etapa
 
     if st.session_state.filtro_status:
-        etapa_coluna = {
-            "VOADO": "VOO",
-            "PROCESSAMENTO VOO": "Processamento Voo",
-            "SAR": "SAR",
-            "QUALIFICADO": "Validação Aquisição",
-            "QUALIFICADO OPERADORA": "SAR QUALIFICADO OPERADORA",
-            "QUALIFICADO CONCESSIONÁRIA": "Analise Concessionária",
-            "KIT ELABORADO": "KIT ELABORADO",
-            "KIT APROVADO": "KIT APROVADO",
-            "EM ANÁLISE AGÊNCIA": "EM ANÁLISE AGÊNCIA",
-            "PUBLICAÇÃO DO": "PUBLICAÇÃO DIÁRIO",
-            "EMISSÃO CPEU": "CPEU"
-        }
-        filtro_coluna = etapa_coluna[st.session_state.filtro_status]
-        df_final = df_final[df_final[filtro_coluna].astype(str).str.len() > 0]
+        df_filtrado = df_filtrado[df_filtrado["STATUS"].str.upper().str.contains(st.session_state.filtro_status.upper())]
 
-    df_final["Ver Detalhes"] = df_final["ID Winity"].apply(lambda x: f"🔎 {x}")
-    colunas_exibir = ["ID Winity", "ID Operadora", "Candidato", "Revisão", "Altura da Torre Final (m)",
-                      "Município", "UF", "Rodovia", "KM", "Latitude Candidato", "Longitude Candidato", "STATUS"]
-    st.dataframe(df_final[colunas_exibir], use_container_width=True, hide_index=True)
+    tabela = df_filtrado[["ID Winity", "ID Operadora", "Candidato", "Revisão", "Altura da Torre Final (m)",
+                          "Município", "UF", "Rodovia", "KM", "Latitude Candidato", "Longitude Candidato", "Sentido", "STATUS"]]
+    st.dataframe(tabela, use_container_width=True, hide_index=True)
 
-    site_escolhido = st.selectbox("Selecione um site para detalhes:", df_final["ID Winity"].unique())
+    site_escolhido = st.selectbox("Selecione um site para detalhes:", tabela["ID Winity"])
     if st.button("Ver detalhes"):
         st.session_state.site = site_escolhido
         st.session_state.pagina = "detalhe"
         st.rerun()
 
+# ---------- Página 2: Detalhamento do Site ----------
 def pagina_detalhe():
-    st.write("Detalhamento do site (em construção).")
-    if st.button("Voltar"):
+    df = carregar_dados()
+    site = st.session_state.site
+    dados = df[df["ID Winity"] == site].iloc[0]
+
+    st.image("logo_vante.png", width=160)
+    st.subheader(f"Detalhamento - {site}")
+
+    if st.button("🔙 VER TODOS OS SITES DO PROJETO"):
         st.session_state.pagina = "tabela"
         st.rerun()
 
+    st.markdown(f"**Candidato:** {dados['Candidato']}")
+    st.markdown(f"**Operadora:** {dados['ID Operadora']}")
+    st.markdown(f"**Status:** {dados['STATUS']}")
+    st.markdown(f"**Observações:** {dados.get('Observação', '-')}")
+
+    st.markdown("**Arquivos disponíveis:**")
+    for arq in ["SAR.pdf", "Projeto_Estrutura.pdf"]:
+        st.download_button(arq, data=b"Fake content", file_name=arq)
+
+# ---------- Execução ----------
 if st.session_state.pagina == "tabela":
     pagina_tabela()
 else:
