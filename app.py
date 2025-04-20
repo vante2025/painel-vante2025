@@ -1,9 +1,9 @@
+
 import streamlit as st
 import pandas as pd
 import folium
 from streamlit_folium import st_folium
 
-# ---------- Configuração Inicial ----------
 st.set_page_config(layout="wide")
 
 if "pagina" not in st.session_state:
@@ -11,101 +11,97 @@ if "pagina" not in st.session_state:
 
 @st.cache_data
 def carregar_dados():
-    file_path = "EcoRiominas - Status Sites.xlsx"
-    df = pd.read_excel(file_path, sheet_name="Controle")
-    df = df.dropna(subset=["ID Winity", "Candidato"])
-    df = df[df["Candidato"].isin(["A", "B", "C", "D"])]
+    df = pd.read_excel("Status Sites.xlsx", sheet_name="Planilha1")
     df = df.fillna("")
     return df
 
-# ---------- Função para exibir logo do projeto ----------
-def exibir_logo_projeto(nome_projeto):
-    caminho_logo = f"logo_{nome_projeto.lower().replace(' ', '_')}.png"
-    try:
-        st.image(caminho_logo, width=120)
-    except:
-        st.warning(f"Logo não encontrado para o projeto: {nome_projeto}")
+def indicadores(df):
+    etapas = {
+        "VOADO": "Data Voo",
+        "PROCESSAMENTO VOO": "Processamento",
+        "SAR": "SAR",
+        "QUALIFICADO": "Qualificação",
+        "QUALIFICADO OPERADORA": "Qualificação Operadora",
+        "QUALIFICADO CONCESSIONÁRIA": "Qualificação Concessionária",
+        "KIT ELABORADO": "Kit",
+        "KIT APROVADO": "Aprovação Concessionária",
+        "EM ANÁLISE AGÊNCIA": "Análise Agência",
+        "PUBLICAÇÃO DO": "Publicação DO",
+        "EMISSÃO CPEU": "Emissão CPEU"
+    }
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        for etapa, coluna in etapas.items():
+            total = df[coluna].astype(str).str.len().gt(0).sum()
+            st.metric(label=etapa, value=total)
+    with col2:
+        st.metric("TOTAL DE SITES", df["ID Winity"].nunique())
 
-# ---------- Página 1: Tabela por Projeto ----------
 def pagina_tabela():
     st.image("logo_vante.png", width=160)
-    st.title("Selecione um projeto")
-
     df = carregar_dados()
 
-    if "Projeto" not in df.columns:
-        st.error("A coluna 'Projeto' não está presente na planilha.")
-        return
+    projetos = df["Projeto"].unique()
+    projetos_sel = st.multiselect("Selecione o Projeto:", projetos, default=projetos[:1])
+    df_proj = df[df["Projeto"].isin(projetos_sel)]
 
-    projeto = st.selectbox("PROJETO:", df["Projeto"].unique())
-    exibir_logo_projeto(projeto)
+    if not df_proj.empty:
+        indicadores(df_proj)
 
-    # Filtrar apenas candidatos vigentes
-    candidatos_validos = df[
-        (df["Projeto"] == projeto) &
-        (~df["STATUS"].str.lower().str.contains("obsoleto|reprovado|invalidado"))
-    ]
+    colunas = ["ID Winity", "ID Operadora", "Candidato", "Rev.", "Latitude", "Longitude", "Município", "UF", "Rodovia", "KM", "Sentido", "Status"]
+    st.dataframe(df_proj[colunas], use_container_width=True)
 
-    colunas = ["ID Winity", "ID Operadora", "Candidato", "STATUS", "Latitude Candidato", "Longitude Candidato",
-               "Município", "UF", "Rodovia", "KM", "Sentido"]
-
-    tabela = candidatos_validos[colunas]
-    st.dataframe(tabela, use_container_width=True, hide_index=True)
-
-    site_escolhido = st.selectbox("Selecione um site para detalhes:", tabela["ID Winity"].unique())
-    if st.button("Ver detalhes do site"):
-        st.session_state.site = site_escolhido
-        st.session_state.projeto = projeto
+    sites = df_proj["ID Winity"].unique()
+    site_sel = st.selectbox("Selecione um site para detalhes:", sites)
+    if st.button("Ver detalhes"):
+        st.session_state.site = site_sel
+        st.session_state.projetos = projetos_sel
         st.session_state.pagina = "detalhe"
         st.rerun()
 
-# ---------- Página 2: Detalhamento ----------
 def pagina_detalhe():
     df = carregar_dados()
-    projeto = st.session_state.get("projeto", "")
+    projetos = st.session_state.get("projetos", [])
     site = st.session_state.get("site", "")
-    df_site = df[(df["Projeto"] == projeto) & (df["ID Winity"] == site)]
+    df_site = df[(df["ID Winity"] == site)]
 
     st.image("logo_vante.png", width=160)
-    exibir_logo_projeto(projeto)
-
-    st.subheader(f"Projeto: {projeto} | Site: {site}")
+    st.subheader(f"Projeto(s): {', '.join(projetos)} | Site: {site}")
     if st.button("🔙 VER TODOS OS SITES DO PROJETO"):
         st.session_state.pagina = "tabela"
         st.rerun()
 
     candidatos = df_site["Candidato"].unique()
     candidato_sel = st.selectbox("Candidato:", candidatos)
-    rev = "0"
-
     dados = df_site[df_site["Candidato"] == candidato_sel].iloc[0]
 
     col1, col2 = st.columns([2, 2])
-
     with col1:
         st.markdown("### Dados do Site")
         campos = {
-            "ID OPERADORA": dados["ID Operadora"],
-            "MUNICÍPIO": dados["Município"],
-            "UF": dados["UF"],
-            "RODOVIA": dados["Rodovia"],
-            "KM": dados["KM"],
-            "SENTIDO": dados["Sentido"],
-            "LAT": dados["Latitude Candidato"],
-            "LONG": dados["Longitude Candidato"],
-            "DISTÂNCIA PN": dados["Dist PN"],
-            "LAT PN": dados["Latitude PN"],
-            "LONG PN": dados["Longitude PN"],
-            "ALTURA": dados["Altura da Torre Final (m)"],
-            "RESTRIÇÃO COMAR": dados["COMAR"],
-            "ENERGIA": dados["Energia"],
-            "RELEVO": dados["Relevo"],
-            "ACIONAMENTO": dados["Acionamento Fornecedor"],
-            "VOO": dados["Data Voo"],
-            "SAR": dados["SAR"],
-            "QUALIFICADO": dados["Validação Aquisição"],
-            "QUALIFICADO OPERADORA": dados["SAR QUALIFICADO OPERADORA"],
-            "QUALIFICADO CONCESSIONÁRIA": dados["Analise Concessionária"]
+            "ID OPERADORA": dados.get("ID Operadora", "-"),
+            "MUNICÍPIO": dados.get("Município", "-"),
+            "UF": dados.get("UF", "-"),
+            "RODOVIA": dados.get("Rodovia", "-"),
+            "KM": dados.get("KM", "-"),
+            "SENTIDO": dados.get("Sentido", "-"),
+            "LAT": dados.get("Latitude", "-"),
+            "LONG": dados.get("Longitude", "-"),
+            "ALTURA": dados.get("Altura da Torre", "-"),
+            "RESTRIÇÃO COMAR": dados.get("COMAR", "-"),
+            "ENERGIA": dados.get("Energia", "-"),
+            "RELEVO": dados.get("Relevo", "-"),
+            "ACIONAMENTO": dados.get("Acionamento", "-"),
+            "VOO": dados.get("Data Voo", "-"),
+            "SAR": dados.get("SAR", "-"),
+            "QUALIFICADO": dados.get("Qualificação", "-"),
+            "QUALIFICADO OPERADORA": dados.get("Qualificação Operadora", "-"),
+            "QUALIFICADO CONCESSIONÁRIA": dados.get("Qualificação Concessionária", "-"),
+            "KIT ELABORADO": dados.get("Kit", "-"),
+            "KIT APROVADO": dados.get("Aprovação Concessionária", "-"),
+            "EM ANÁLISE AGÊNCIA": dados.get("Análise Agência", "-"),
+            "PUBLICAÇÃO DO": dados.get("Publicação DO", "-"),
+            "EMISSÃO CPEU": dados.get("Emissão CPEU", "-")
         }
         for k, v in campos.items():
             st.markdown(f"**{k}:** {v if v else '-'}")
@@ -116,18 +112,14 @@ def pagina_detalhe():
 
     with col2:
         st.markdown("### Localização")
-        m = folium.Map(location=[dados["Latitude Candidato"], dados["Longitude Candidato"]], zoom_start=15)
-        folium.Marker(
-            [dados["Latitude Candidato"], dados["Longitude Candidato"]],
-            popup=f"Candidato {candidato_sel}",
-            icon=folium.Icon(color='blue', icon='info-sign')
-        ).add_to(m)
-        folium.Marker(
-            [dados["Latitude PN"], dados["Longitude PN"]],
-            popup="Ponto Nominal (PN)",
-            icon=folium.Icon(color='green', icon='flag')
-        ).add_to(m)
-        st_folium(m, width=700, height=500)
+        try:
+            lat = float(dados.get("Latitude", -23.0))
+            lon = float(dados.get("Longitude", -46.0))
+            m = folium.Map(location=[lat, lon], zoom_start=15)
+            folium.Marker([lat, lon], popup=f"{site} - Candidato {candidato_sel}").add_to(m)
+            st_folium(m, width=700, height=500)
+        except:
+            st.warning("Coordenadas inválidas para exibição do mapa.")
 
 if st.session_state.pagina == "tabela":
     pagina_tabela()
