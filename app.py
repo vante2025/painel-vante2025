@@ -4,6 +4,7 @@ import pandas as pd
 import folium
 from streamlit_folium import st_folium
 
+# ---------- Configuração Inicial ----------
 st.set_page_config(layout="wide")
 
 if "pagina" not in st.session_state:
@@ -20,6 +21,7 @@ def carregar_dados():
     df = df.fillna("")
     return df
 
+# ---------- Página 1: Painel de Projetos ----------
 def pagina_tabela():
     st.image("logo_vante.png", width=160)
     df = carregar_dados()
@@ -32,6 +34,7 @@ def pagina_tabela():
 
     df_filtrado = df[df["Projeto"].isin(projetos)]
 
+    # ---------- Selecionar apenas um candidato vigente por site ----------
     df_filtrado = df_filtrado.sort_values(by=["ID Winity", "Rev."], ascending=[True, False])
     df_filtrado = df_filtrado.groupby("ID Winity").apply(lambda x: x[x["STATUS"].str.lower().isin(["em qualificação", "qualificado"])]
                                                            if any(x["STATUS"].str.lower().isin(["em qualificação", "qualificado"]))
@@ -72,8 +75,7 @@ def pagina_tabela():
         if etapa == "TOTAL DE SITES":
             colunas[i].metric(f"{icone} {etapa}", valor)
         else:
-            if colunas[i].button(f"{icone} {etapa}
-{valor}"):
+            if colunas[i].button(f"{icone} {etapa}\n{valor}"):
                 st.session_state.filtro_status = etapa
 
     if st.session_state.filtro_status:
@@ -89,6 +91,7 @@ def pagina_tabela():
         st.session_state.pagina = "detalhe"
         st.rerun()
 
+# ---------- Página 2: Detalhamento do Site ----------
 def pagina_detalhe():
     df = carregar_dados()
     site = st.session_state.site
@@ -110,6 +113,7 @@ def pagina_detalhe():
     for arq in ["SAR.pdf", "Projeto_Estrutura.pdf"]:
         st.download_button(arq, data=b"Fake content", file_name=arq)
 
+# ---------- Execução ----------
 if st.session_state.pagina == "tabela":
     pagina_tabela()
 else:
