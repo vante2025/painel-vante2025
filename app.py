@@ -1,120 +1,167 @@
 
 import streamlit as st
 import pandas as pd
+import os
 import folium
 from streamlit_folium import st_folium
+from streamlit.components.v1 import html
 
-# ---------- Configuração Inicial ----------
 st.set_page_config(layout="wide")
 
 if "pagina" not in st.session_state:
     st.session_state.pagina = "tabela"
-    st.session_state.site = ""
-    st.session_state.projeto = []
-    st.session_state.filtro_status = None
 
 @st.cache_data
 def carregar_dados():
-    df = pd.read_excel("Status Sites.xlsx", sheet_name="Planilha1")
-    df = df.dropna(subset=["ID Winity", "Candidato"])
-    df = df[df["Candidato"].isin(["A", "B", "C", "D"])]
-    df = df.fillna("")
-    return df
+    arquivos = os.listdir(".")
+    planilha = next((f for f in arquivos if f.lower().endswith(".xlsx") and "status" in f.lower()), None)
+    if not planilha:
+        st.error("Arquivo da planilha não encontrado no diretório.")
+        st.stop()
+    df = pd.read_excel(planilha, sheet_name="Planilha1")
+    return df.fillna("")
 
-# ---------- Página 1: Painel de Projetos ----------
+def indicador_card(titulo, valor, icone="✅", cor="#007bff"):
+    cor_fundo = "#f8f9fa" if valor == "N/A" else cor
+    cor_texto = "#6c757d" if valor == "N/A" else "#ffffff"
+    return f"""
+        <div style='background-color:{cor_fundo};color:{cor_texto};padding:20px 10px;border-radius:15px;width:170px;height:110px;display:flex;flex-direction:column;justify-content:center;align-items:center;margin:5px;'>
+            <div style='font-size:18px;font-weight:600;'>{icone} {titulo}</div>
+            <div style='font-size:26px;font-weight:700;margin-top:8px;'>{valor}</div>
+        </div>
+    """
+
+def indicadores(df):
+    etapas = [
+        ("VOADO", "Data Voo", "🛫"),
+        ("PROCESSAMENTO VOO", "Processamento", "🧮"),
+        ("SAR", "SAR", "📄"),
+        ("QUALIFICADO", "Qualificação", "✅"),
+        ("QUALIFICADO OPERADORA", "Qualificação Operadora", "📶"),
+        ("QUALIFICADO CONCESSIONÁRIA", "Qualificação Concessionária", "🏛️"),
+        ("KIT ELABORADO", "Kit", "📦"),
+        ("KIT APROVADO", "Aprovação Concessionária", "✔️"),
+        ("EM ANÁLISE AGÊNCIA", "Análise Agência", "🔎"),
+        ("PUBLICAÇÃO DO", "Publicação DO", "📰"),
+        ("EMISSÃO CPEU", "Emissão CPEU", "📬")
+    ]
+    cards = []
+    for nome_visivel, coluna, icone in etapas:
+        if coluna in df.columns:
+            valor = df[coluna].astype(str).str.len().gt(0).sum()
+        else:
+            valor = "N/A"
+        cards.append(indicador_card(nome_visivel, valor, icone))
+
+    total = df["ID Winity"].nunique()
+    cards.insert(0, indicador_card("TOTAL DE SITES", total, "🗼", cor="#198754"))
+
+    linha = cards
+    for linha in [linha]:
+        html("<div style='display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;'>%s</div>" % "".join(linha))
+
 def pagina_tabela():
     st.image("logo_vante.png", width=160)
     df = carregar_dados()
 
-    projetos = st.multiselect("Selecione o Projeto:", df["Projeto"].unique(), default=st.session_state.projeto)
-    st.session_state.projeto = projetos
+    projetos = df["Projeto"].unique()
+    projetos_sel = st.multiselect("Selecione o Projeto:", projetos, default=projetos[:1])
 
-    if not projetos:
-        return
+    df_proj = df[df["Projeto"].isin(projetos_sel)]
 
-    df_filtrado = df[df["Projeto"].isin(projetos)]
+    df_proj["Status"] = df_proj["Status"].astype(str).str.lower()
+    df_proj = df_proj.sort_values(["ID Winity", "Candidato", "Rev."], ascending=[True, True, False])
 
-    # ---------- Selecionar apenas um candidato vigente por site ----------
-    df_filtrado = df_filtrado.sort_values(by=["ID Winity", "Revisão"], ascending=[True, False])
-    df_filtrado = df_filtrado.groupby("ID Winity").apply(lambda x: x[x["STATUS"].str.lower().isin(["em qualificação", "qualificado"])]
-                                                           if any(x["STATUS"].str.lower().isin(["em qualificação", "qualificado"]))
-                                                           else x).reset_index(drop=True)
-    df_filtrado = df_filtrado.sort_values(by=["ID Winity", "Revisão"], ascending=[True, False])
-    df_filtrado = df_filtrado.drop_duplicates(subset=["ID Winity"], keep="first")
+    # Separar qualificados/em qualificação
+    qualificados = df_proj[df_proj["Status"].str.contains("qualificado|em qualificação")]
+    reprovados = df_proj[~df_proj["ID Winity"].isin(qualificados["ID Winity"])]
 
-    etapas = {
-        "TOTAL DE SITES": "# 📍",
-        "VOADO": "🛩️",
-        "PROCESSAMENTO VOO": "📰",
-        "SAR": "📄",
-        "QUALIFICADO": "✅",
-        "QUALIFICADO OPERADORA": "📊",
-        "QUALIFICADO CONCESSIONÁRIA": "🏛️",
-        "KIT ELABORADO": "🥇",
-        "KIT APROVADO": "✔️",
-        "EM ANÁLISE AGÊNCIA": "🔍",
-        "PUBLICAÇÃO DO": "📰"
-    }
+    # Para IDs com qualificado, manter só 1 (primeiro)
+    df_ok = qualificados.drop_duplicates("ID Winity", keep="first")
 
-    def indicadores(df):
-        total = len(df)
-        cards = []
-        for etapa, icone in etapas.items():
-            if etapa == "TOTAL DE SITES":
-                cards.append((etapa, icone, total))
-            elif etapa == "VOADO":
-                cards.append((etapa, icone, df["VOO"].astype(str).str.strip().ne("").sum()))
-            elif etapa == "PROCESSAMENTO VOO":
-                cards.append((etapa, icone, df["Processamento Voo"].astype(str).str.strip().ne("").sum()))
-            else:
-                cards.append((etapa, icone, df["STATUS"].str.upper().str.contains(etapa.upper()).sum()))
-        return cards
+    # Para IDs sem qualificado, pega o de maior revisão
+    df_fallback = reprovados.sort_values("Rev.", ascending=False).drop_duplicates("ID Winity", keep="first")
 
-    colunas = st.columns(len(etapas))
-    for i, (etapa, icone, valor) in enumerate(indicadores(df_filtrado)):
-        if etapa == "TOTAL DE SITES":
-            colunas[i].metric(f"{icone} {etapa}", valor)
-        else:
-            if colunas[i].button(f"{icone} {etapa}
-{valor}"):
-                st.session_state.filtro_status = etapa
+    # Junta os dois
+    df_proj = pd.concat([df_ok, df_fallback], ignore_index=True)
+    
 
-    if st.session_state.filtro_status:
-        df_filtrado = df_filtrado[df_filtrado["STATUS"].str.upper().str.contains(st.session_state.filtro_status.upper())]
+    if not df_proj.empty:
+        indicadores(df_proj)
 
-    tabela = df_filtrado[["ID Winity", "ID Operadora", "Candidato", "Revisão", "Altura da Torre Final (m)",
-                          "Município", "UF", "Rodovia", "KM", "Latitude Candidato", "Longitude Candidato", "Sentido", "STATUS"]]
-    st.dataframe(tabela, use_container_width=True, hide_index=True)
+    colunas = ["ID Winity", "ID Operadora", "Candidato", "Rev.", "Latitude", "Longitude", "Município", "UF", "Rodovia", "KM", "Sentido", "Status"]
+    st.dataframe(df_proj[[col for col in colunas if col in df_proj.columns]], use_container_width=True)
 
-    site_escolhido = st.selectbox("Selecione um site para detalhes:", tabela["ID Winity"])
+    sites = df_proj["ID Winity"].unique()
+    site_sel = st.selectbox("Selecione um site para detalhes:", sites)
     if st.button("Ver detalhes"):
-        st.session_state.site = site_escolhido
+        st.session_state.site = site_sel
+        st.session_state.projetos = projetos_sel
         st.session_state.pagina = "detalhe"
         st.rerun()
 
-# ---------- Página 2: Detalhamento do Site ----------
 def pagina_detalhe():
     df = carregar_dados()
-    site = st.session_state.site
-    dados = df[df["ID Winity"] == site].iloc[0]
+    projetos = st.session_state.get("projetos", [])
+    site = st.session_state.get("site", "")
+    df_site = df[(df["ID Winity"] == site)]
 
     st.image("logo_vante.png", width=160)
-    st.subheader(f"Detalhamento - {site}")
-
+    st.subheader(f"Projeto(s): {', '.join(projetos)} | Site: {site}")
     if st.button("🔙 VER TODOS OS SITES DO PROJETO"):
         st.session_state.pagina = "tabela"
         st.rerun()
 
-    st.markdown(f"**Candidato:** {dados['Candidato']}")
-    st.markdown(f"**Operadora:** {dados['ID Operadora']}")
-    st.markdown(f"**Status:** {dados['STATUS']}")
-    st.markdown(f"**Observações:** {dados.get('Observação', '-')}")
+    candidatos = df_site["Candidato"].unique()
+    candidato_sel = st.selectbox("Candidato:", candidatos)
+    dados = df_site[df_site["Candidato"] == candidato_sel].iloc[0]
 
-    st.markdown("**Arquivos disponíveis:**")
-    for arq in ["SAR.pdf", "Projeto_Estrutura.pdf"]:
-        st.download_button(arq, data=b"Fake content", file_name=arq)
+    col1, col2 = st.columns([2, 2])
+    with col1:
+        st.markdown("### Dados do Site")
+        campos = {
+            "ID OPERADORA": dados.get("ID Operadora", "-"),
+            "MUNICÍPIO": dados.get("Município", "-"),
+            "UF": dados.get("UF", "-"),
+            "RODOVIA": dados.get("Rodovia", "-"),
+            "KM": dados.get("KM", "-"),
+            "SENTIDO": dados.get("Sentido", "-"),
+            "LAT": dados.get("Latitude", "-"),
+            "LONG": dados.get("Longitude", "-"),
+            "ALTURA": dados.get("Altura da Torre", "-"),
+            "RESTRIÇÃO COMAR": dados.get("COMAR", "-"),
+            "ENERGIA": dados.get("Energia", "-"),
+            "RELEVO": dados.get("Relevo", "-"),
+            "ACIONAMENTO": dados.get("Acionamento", "-"),
+            "VOO": dados.get("Data Voo", "-"),
+            "SAR": dados.get("SAR", "-"),
+            "QUALIFICADO": dados.get("Qualificação", "-"),
+            "QUALIFICADO OPERADORA": dados.get("Qualificação Operadora", "-"),
+            "QUALIFICADO CONCESSIONÁRIA": dados.get("Qualificação Concessionária", "-"),
+            "KIT ELABORADO": dados.get("Kit", "-"),
+            "KIT APROVADO": dados.get("Aprovação Concessionária", "-"),
+            "EM ANÁLISE AGÊNCIA": dados.get("Análise Agência", "-"),
+            "PUBLICAÇÃO DO": dados.get("Publicação DO", "-"),
+            "EMISSÃO CPEU": dados.get("Emissão CPEU", "-")
+        }
+        for k, v in campos.items():
+            st.markdown(f"**{k}:** {v if v else '-'}")
 
-# ---------- Execução ----------
+        st.markdown("### Documentos para Download")
+        for nome in ["SAR", "KMZ", "PLANIALTIMETRICO", "PUBLICAÇÃO DIÁRIO", "CPEU"]:
+            st.download_button(label=nome, data="Arquivo Simulado", file_name=f"{nome}_{site}.pdf")
+
+    with col2:
+        st.markdown("### Localização")
+        try:
+            lat = float(dados.get("Latitude", -23.0))
+            lon = float(dados.get("Longitude", -46.0))
+            m = folium.Map(location=[lat, lon], zoom_start=15)
+            folium.Marker([lat, lon], popup=f"{site} - Candidato {candidato_sel}").add_to(m)
+            st_folium(m, width=700, height=500)
+        except:
+            st.warning("Coordenadas inválidas para exibição do mapa.")
+
 if st.session_state.pagina == "tabela":
     pagina_tabela()
 else:
