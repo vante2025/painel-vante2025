@@ -15,7 +15,7 @@ def carregar_dados():
     arquivos = os.listdir(".")
     planilha = next((f for f in arquivos if f.lower().endswith(".xlsx") and "status" in f.lower()), None)
     if not planilha:
-        st.error("Arquivo da planilha não encontrado no diretório. Verifique se o arquivo .xlsx está corretamente nomeado.")
+        st.error("Arquivo da planilha não encontrado no diretório.")
         st.stop()
     df = pd.read_excel(planilha, sheet_name="Planilha1")
     return df.fillna("")
@@ -37,8 +37,11 @@ def indicadores(df):
     col1, col2 = st.columns([3, 1])
     with col1:
         for etapa, coluna in etapas.items():
-            total = df[coluna].astype(str).str.len().gt(0).sum()
-            st.metric(label=etapa, value=total)
+            if coluna in df.columns:
+                total = df[coluna].astype(str).str.len().gt(0).sum()
+                st.metric(label=etapa, value=total)
+            else:
+                st.metric(label=etapa, value="N/A")
     with col2:
         st.metric("TOTAL DE SITES", df["ID Winity"].nunique())
 
@@ -54,7 +57,7 @@ def pagina_tabela():
         indicadores(df_proj)
 
     colunas = ["ID Winity", "ID Operadora", "Candidato", "Rev.", "Latitude", "Longitude", "Município", "UF", "Rodovia", "KM", "Sentido", "Status"]
-    st.dataframe(df_proj[colunas], use_container_width=True)
+    st.dataframe(df_proj[[col for col in colunas if col in df_proj.columns]], use_container_width=True)
 
     sites = df_proj["ID Winity"].unique()
     site_sel = st.selectbox("Selecione um site para detalhes:", sites)
