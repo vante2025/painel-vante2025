@@ -45,7 +45,22 @@ def indicadores(df):
         ("PUBLICAÇÃO DO", "Publicação DO", "📰"),
         ("EMISSÃO CPEU", "Emissão CPEU", "📬")
     ]
-    cards = []
+    cards = [
+    indicador_card("VOADO", voado, "🛩️", "voado", "VOO"),
+    indicador_card("PROCESSAMENTO VOO", processado, "🖨️", "proc", "Processamento Voo"),
+    indicador_card("SAR", sar, "📄", "sar", "SAR"),
+    indicador_card("QUALIFICADO", qualif, "✅", "qualif", "QUALIFICADO"),
+    indicador_card("QUALIFICADO OPERADORA", op, "📊", "op", "SAR QUALIFICADO OPERADORA"),
+    indicador_card("QUALIFICADO CONCESSIONÁRIA", conc, "🏛️", "con", "Analise Concessionária"),
+    indicador_card("KIT ELABORADO", kit, "📦", "kit", "KIT"),
+    indicador_card("KIT APROVADO", aprovado, "✔️", "apr", "KIT APROVADO"),
+    indicador_card("EM ANÁLISE AGÊNCIA", ag, "🔍", "ag", "ANÁLISE AGÊNCIA"),
+    indicador_card("PUBLICAÇÃO DO", dou, "📰", "dou", "PUBLICAÇÃO DOU"),
+    indicador_card("EMISSÃO CPEU", cpeu, "📄", "cpeu", "CPEU"),
+]
+
+    indicador_card("PROCESSAMENTO VOO", processado, "🖨️"),
+]
     for nome_visivel, coluna, icone in etapas:
         if coluna in df.columns:
             valor = df[coluna].astype(str).str.len().gt(0).sum()
@@ -60,7 +75,11 @@ def indicadores(df):
     for linha in [linha]:
         html("<div style='display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;'>%s</div>" % "".join(linha))
 
+
 def pagina_tabela():
+    if "filtro_status" not in st.session_state:
+        st.session_state.filtro_status = None
+
     st.image("logo_vante.png", width=160)
     df = carregar_dados()
 
