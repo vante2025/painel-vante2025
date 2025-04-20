@@ -54,10 +54,10 @@ def indicadores(df):
         cards.append(indicador_card(nome_visivel, valor, icone))
 
     total = df["ID Winity"].nunique()
-    cards.insert(2, indicador_card("TOTAL DE SITES", total, "📍", cor="#198754"))
+    cards.insert(2, indicador_card("TOTAL DE SITES", total, "🗼", cor="#198754"))
 
-    linhas = [cards[:6], cards[6:]]
-    for linha in linhas:
+    linha = cards
+    for linha in [linha]:
         html("<div style='display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;'>%s</div>" % "".join(linha))
 
 def pagina_tabela():
@@ -66,7 +66,17 @@ def pagina_tabela():
 
     projetos = df["Projeto"].unique()
     projetos_sel = st.multiselect("Selecione o Projeto:", projetos, default=projetos[:1])
+
     df_proj = df[df["Projeto"].isin(projetos_sel)]
+
+    # Normalizar status
+    df_proj["Status"] = df_proj["Status"].astype(str).str.lower()
+
+    # Priorizar candidatos não reprovados
+    df_proj = df_proj.sort_values(["ID Winity", "Rev."], ascending=[True, False])
+    df_proj = df_proj[~df_proj["Status"].str.contains("reprovado|obsoleto|invalidado") | ~df_proj.duplicated("ID Winity")]
+    df_proj = df_proj.drop_duplicates(subset="ID Winity", keep="first")
+    
 
     if not df_proj.empty:
         indicadores(df_proj)
