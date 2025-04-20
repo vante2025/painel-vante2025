@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import folium
 from streamlit_folium import st_folium
+from streamlit.components.v1 import html
 
 st.set_page_config(layout="wide")
 
@@ -20,30 +21,44 @@ def carregar_dados():
     df = pd.read_excel(planilha, sheet_name="Planilha1")
     return df.fillna("")
 
+def indicador_card(titulo, valor, icone="✅", cor="#007bff"):
+    cor_fundo = "#f8f9fa" if valor == "N/A" else cor
+    cor_texto = "#6c757d" if valor == "N/A" else "#ffffff"
+    return f"""
+        <div style='background-color:{cor_fundo};color:{cor_texto};padding:20px 10px;border-radius:15px;width:170px;height:110px;display:flex;flex-direction:column;justify-content:center;align-items:center;margin:5px;'>
+            <div style='font-size:18px;font-weight:600;'>{icone} {titulo}</div>
+            <div style='font-size:26px;font-weight:700;margin-top:8px;'>{valor}</div>
+        </div>
+    """
+
 def indicadores(df):
-    etapas = {
-        "VOADO": "Data Voo",
-        "PROCESSAMENTO VOO": "Processamento",
-        "SAR": "SAR",
-        "QUALIFICADO": "Qualificação",
-        "QUALIFICADO OPERADORA": "Qualificação Operadora",
-        "QUALIFICADO CONCESSIONÁRIA": "Qualificação Concessionária",
-        "KIT ELABORADO": "Kit",
-        "KIT APROVADO": "Aprovação Concessionária",
-        "EM ANÁLISE AGÊNCIA": "Análise Agência",
-        "PUBLICAÇÃO DO": "Publicação DO",
-        "EMISSÃO CPEU": "Emissão CPEU"
-    }
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        for etapa, coluna in etapas.items():
-            if coluna in df.columns:
-                total = df[coluna].astype(str).str.len().gt(0).sum()
-                st.metric(label=etapa, value=total)
-            else:
-                st.metric(label=etapa, value="N/A")
-    with col2:
-        st.metric("TOTAL DE SITES", df["ID Winity"].nunique())
+    etapas = [
+        ("VOADO", "Data Voo", "🛫"),
+        ("PROCESSAMENTO VOO", "Processamento", "🧮"),
+        ("SAR", "SAR", "📄"),
+        ("QUALIFICADO", "Qualificação", "✅"),
+        ("QUALIFICADO OPERADORA", "Qualificação Operadora", "📶"),
+        ("QUALIFICADO CONCESSIONÁRIA", "Qualificação Concessionária", "🏛️"),
+        ("KIT ELABORADO", "Kit", "📦"),
+        ("KIT APROVADO", "Aprovação Concessionária", "✔️"),
+        ("EM ANÁLISE AGÊNCIA", "Análise Agência", "🔎"),
+        ("PUBLICAÇÃO DO", "Publicação DO", "📰"),
+        ("EMISSÃO CPEU", "Emissão CPEU", "📬")
+    ]
+    cards = []
+    for nome_visivel, coluna, icone in etapas:
+        if coluna in df.columns:
+            valor = df[coluna].astype(str).str.len().gt(0).sum()
+        else:
+            valor = "N/A"
+        cards.append(indicador_card(nome_visivel, valor, icone))
+
+    total = df["ID Winity"].nunique()
+    cards.insert(2, indicador_card("TOTAL DE SITES", total, "📍", cor="#198754"))
+
+    linhas = [cards[:6], cards[6:]]
+    for linha in linhas:
+        html("<div style='display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;'>%s</div>" % "".join(linha))
 
 def pagina_tabela():
     st.image("logo_vante.png", width=160)
