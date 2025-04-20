@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import folium
@@ -75,8 +74,7 @@ def pagina_tabela():
         if etapa == "TOTAL DE SITES":
             colunas[i].metric(f"{icone} {etapa}", valor)
         else:
-            if colunas[i].button(f"{icone} {etapa}
-{valor}"):
+            if colunas[i].button(f"{icone} {etapa}\n{valor}"):
                 st.session_state.filtro_status = etapa
 
     if st.session_state.filtro_status:
