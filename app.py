@@ -90,17 +90,15 @@ def pagina_tabela():
         indicadores(df_proj)
 
     colunas = ["ID Winity", "ID Operadora", "Candidato", "Rev.", "Latitude", "Longitude", "Município", "UF", "Rodovia", "KM", "Sentido", "Status"]
-    st.markdown("### Lista de Sites")
-    for _, row in df_proj.iterrows():
-        col1, col2 = st.columns([6, 1])
-        with col1:
-            st.markdown(f"**{row['ID Winity']}** | Candidato: {row['Candidato']} | Status: {row['Status']}")
-        with col2:
-            if st.button("Detalhes", key=f"btn_{row['ID Winity']}"):
-                st.session_state.site = row["ID Winity"]
-                st.session_state.projetos = projetos_sel
-                st.session_state.pagina = "detalhe"
-                st.rerun()
+    st.dataframe(df_proj[[col for col in colunas if col in df_proj.columns]], use_container_width=True)
+
+    sites = df_proj["ID Winity"].unique()
+    site_sel = st.selectbox("Selecione um site para detalhes:", sites)
+    if st.button("Ver detalhes"):
+        st.session_state.site = site_sel
+        st.session_state.projetos = projetos_sel
+        st.session_state.pagina = "detalhe"
+        st.rerun()
 
 def pagina_detalhe():
     df = carregar_dados()
